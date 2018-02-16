@@ -1,0 +1,424 @@
+---
+title: "PCA Introduction for Data Scholars Discovery"
+author: "Evan Muzzall"
+date: "2/15/2018"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+---
+> NOTE: _see the .Rmd file for the code!_
+
+# Goal
+Pretend you are a [bioarchaeologist for a day!](https://en.wikipedia.org/wiki/Bioarchaeology) You excavate skeletons from five famous archaeological sites: Çatalhöyük, Halstatt, Huaca Loro, Odai Yamamoto, and Shum Laka.  
+
+The data collection process usually involves collecting data of different types due to the complexities of archaeological sites:  
+* Factor variables often reflect hard-to-quantify data such as characteristics of a burial (such as its location and style) and some biological information about the skeleton (e.g., sex estimation and health status).  
+* Integers are often used to count the number of items placed in the burial, and often include religious/symbolic, practical, and luxury items.  
+* Numeric data are often used to record measurements of individual bones of the skeleton.  
+
+Bioarchaeologists seek to use such data to make inferences about the living people of the past. This is challenging not only due to our [inherent biases](https://en.wikipedia.org/wiki/Archaeological_theory) when making such inferences, but also because analysis is hard since our data often consist of different types!  
+
+PCA and other [ordination methods](http://ordination.okstate.edu/) are important to investigate mixed datasets such as the toy one created below. We ask: how can PCA help us interpret these data so that we are able to gain some understanding of the variation of these variables across the five archaeological sites?  
+
+# Generate toy data
+```{r, include = F}
+dat <- data.frame(Site=c("Huaca Loro","Huaca Loro","Huaca Loro","Huaca Loro","Huaca Loro",
+                         "Halstatt", "Halstatt", "Halstatt", "Halstatt", "Halstatt", 
+                         "Catalhoyuk","Catalhoyuk","Catalhoyuk","Catalhoyuk","Catalhoyuk",
+                         "Odai Yamamoto", "Odai Yamamoto", "Odai Yamamoto", "Odai Yamamoto", "Odai Yamamoto",
+                         "Shum Laka","Shum Laka","Shum Laka","Shum Laka","Shum Laka"),
+                  Sex = c("Male","Male","Female","Male","Female",
+                          "Male","Female","Male","Female","Male",
+                          "Male","Male","Female","Male","Female",
+                          "Male","Male","Female","Female","Male",
+                          "Female","Female","Female","Female","Female"),
+                  Health = c("Average","Poor","Excellent","Excellent","Excellent",
+                             "Average","Average","Average","Average","Excellent",
+                             "Average","Average","Average","Average","Average",
+                             "Average","Average","Average","Excellent", "Poor",
+                             "Excellent","Excellent","Excellent","Excellent","Excellent"),
+                  Burial_location=c("Cemetery","Temple","Temple","Temple","Cemetery",
+                              "Hillside","Beach","Hillside","Hillside","Beach",
+                              "Shrine","Basket","Basket","Basket","Rockshelter",
+                              "Temple","Temple","Beach","Temple","Beach",
+                              "Cave","Shrine","Rockshelter","Cave","Cave"),
+                  Depth=as.integer(c(110,120,120,100,80,
+                          40,40,50,60,40,
+                          80,80,70,80,60,
+                          100,120,90,100,90,
+                          20,10,20,10,10)),
+                  Burial_items=as.integer(c(10,8,7,4,6,
+                                0,0,1,2,5,
+                                3,2,4,4,3,
+                                15,18,12,12,14,
+                                1,2,0,0,0)),
+                  Ceramic_vessels=as.integer(c(10,11,14,15,13,
+                                    3,4,2,4,2,
+                                    2,3,2,5,6,
+                                    1,1,1,1,3,
+                                    1,1,0,0,0)),
+                  Femur_length=c(480.1,481.0,400.3,482.9,405.7,
+                                 490.4,440.1,499.8,442.5,502.1,
+                                 460.5,469.2,455.4,462.1,459.0,
+                                 480.6,479.9,420.4,422.9,478.7,
+                                 470.1,469.2,473.4,478.7,471.0))
+str(dat)
+```
+```{r}
+options(width=100)
+dat
+```
+
+**EXAMPLE WORKFLOW:**  
+First scale the numeric data and visualize it with boxplots. Then, use the `princomp` R function to fit the model on the numeric data and view the scree plot, biplot, and scatterplot. Then, extract the first two principal component loadings to view variation along these axes. 
+
+Now, fit the model again but this time include the factor variables via the `PCAmix` function from the PCAMixdata package, view the loadings for this updated model, and show some other visualizations from `PCAmix`. Then, plot geometric group mean variation in three dimensions with rgl’s `plot3d` function. Finally, compare training dataset versus test dataset predictive accuracy using a simple machine learning setup with the `prcomp` function.  
+
+# Install + library necessary packages
+```{r, include = F}
+if (FALSE) {
+  install.packages(c("ggplot2","gridExtra","PCAmixdata","psych","reshape2","rgl")) # run only line 77 to install packages
+}
+```
+```{r}
+library(ggplot2) # ggplots  
+library(gridExtra) # panel ggplots
+library(PCAmixdata) # PCA for mixed-data
+library(psych) # summary stats
+library(reshape2) # melt data for boxplots
+library(rgl) # 3d plot
+
+# see library(help = "base") to list all functions from any package
+```
+
+# Scale the numeric variables
+```{r}
+# first create a subset named "numeric" that contains only the numeric variables
+numeric <- dat[,c("Depth", "Burial_items", "Ceramic_vessels", "Femur_length")]
+numeric
+
+# then, scale the data
+num <- data.frame(scale(numeric, center=TRUE, scale=TRUE))
+num
+```
+
+# Scaled data boxplots
+Construct boxplots to see how the scaled numeric variables look
+```{r, include = F, echo = F}
+library(reshape2)
+num_melt = melt(num)
+num_melt
+boxplots = ggplot(num_melt, aes(x = variable, y = value)) +
+  geom_boxplot() + theme_light() + guides(fill = FALSE) +
+  ggtitle("Scaled data boxplots") + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  facet_wrap(~dat$Site)
+```
+```{r}
+boxplots
+```
+
+# What is PCA?
+* Powerful linear transformation technique to explore patterns in data and correlated variables.  
+* Distill variation across many variables onto a reduced feature space (e.g., a scatterplot) while maintaining the integrity of the data.  
+
+How to:  
+1. Scale data  
+2. Compute Eigenpairs (via eigendecomposition on covariance matrix or correlation matrix; singular value decomposition):  
+  2.1. Eigenvector - principal component; stored in projection matrix. Defines directions of the new feature space.  
+  2.2. Eigenvalue - explains magnitude of the Eigenvector; defines how much variance along each axis.  
+3. Choose the eigenvectors **_k_** with largest eigenvalues  
+4. Construct projection matrix **_W_**  
+5. Use **_W_** to transform an original dataset **_A_** to the **_k_**-dimensional feature subspace named **_Y_**  
+
+Math stuff is not discussed today. However, check out [Jordan's (1987) **An introduction to linear algebra in parallel distributed processing**](https://www.cs.cmu.edu/afs/cs/academic/class/15883-f15/readings/jordan-1986-ch9.pdf) and 
+[Kolter and Do's (2015) **Linear algebra review and reference**](http://www.cs.cmu.edu/~zkolter/course/15-884/linalg-review.pdf) to learn more.  
+
+# `princomp` PCA
+Now, fit the PCA model using the built-in `princomp` function (from the "stats" package). Check out the **screeplot, biplot, and scatterplot!**
+```{r, include = F, echo = F}
+names(num)
+pca_princomp = princomp(num, scores = T, cor = T)
+pca_princomp
+summary(pca_princomp)
+```
+```{r}
+plot(pca_princomp, main = "princomp: scree plot")
+
+biplot(pca_princomp, main = "princomp: biplot") 
+```
+```{r, include = F, echo=F}
+names(pca_princomp)
+pca_princomp$scores
+
+pca_princomp_df = data.frame(pca_princomp$scores[,1], pca_princomp$scores[,2], pca_princomp$scores[,3])
+
+pca_princomp$loadings
+
+# plot
+pca_princomp_plot <- ggplot(pca_princomp_df, aes(pca_princomp_df[,1], pca_princomp_df[,2], col=dat$Site)) + 
+  geom_point(size = 5) +
+  ggtitle("princomp: scatterplot") + 
+  xlab("Dimension 1 (53%)") + 
+  ylab("Dimension 2 (26%)") + 
+  theme_light() + 
+  stat_ellipse(show.legend = FALSE, lwd = 1) + 
+  labs(color='Site') 
+```
+```{r}
+pca_princomp_plot
+```
+
+# `princomp` PCA - loadings
+Now, extract the loadings 
+```{r, include = F, echo = F}
+# define loadings within a data.frame
+pca_loadings = data.frame(c("Depth", "Burial_items", "Ceramic_vessels", "Femur_length"), pca_princomp$loadings[,1], pca_princomp$loadings[,2])
+
+# plot first principal axis (PC1)
+pca_pc1 <- ggplot(pca_loadings, aes(x = pca_loadings[,1], y = pca_loadings[,2])) + 
+  geom_bar(stat="identity") +
+  ggtitle("princomp: PC 1 loadings") +
+  xlab("PC 1") + 
+  ylab("") + 
+  ylim(-1, 1) +
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+```{r}
+pca_pc1
+```
+```{r, include = F, echo = F}
+# plot PC2
+pca_pc2 <- ggplot(pca_loadings, aes(x = pca_loadings[,1], y = pca_loadings[,3])) + 
+  geom_bar(stat="identity") +
+  ggtitle("princomp: PC 2 loadings") +
+  xlab("PC 2") + 
+  ylab("") + 
+  ylim(-1, 1) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+```{r}
+pca_pc2
+```
+
+# `princomp` PCA - loadings in 2D
+Then you can view the loadings in two dimensions
+```{r, include = F, echo = F}
+pca_df_vars <- data.frame(pca_princomp$loadings[,1], pca_princomp$loadings[,2])
+
+pca_df_vars_plot <- ggplot(pca_df_vars, aes(pca_df_vars[,1], pca_df_vars[,2])) + 
+  geom_text(label=row.names(pca_df_vars), size = 7) + 
+  xlim(-0.75,1) +
+  xlab("Component 1 (66%)") + ylab("Component 2 (31%)") + ggtitle("princomp: loadings scatterplot") + 
+  theme_minimal()
+```
+```{r}
+pca_df_vars_plot
+```
+
+# `PCAmix` PCA 
+`princomp` only performed PCA on the numeric variables. Let's use the `PCAmix` function from the "PCAmixdata" package to include the factor variables as well: 
+```{r, include = F}
+library(PCAmixdata)
+
+# create new data that contains the scaled numeric variables
+dat2 = data.frame(Site = dat[,1], Sex = dat[,2], Health = dat[,3], Burial_location = dat[,4],
+                 Depth = num[,1], Burial_items = num[,2], Ceramic_vessels = num[,3], Femur_length = num[,4])
+dat2
+str(dat2)
+
+split = splitmix(dat2)
+X1 = split$X.quanti
+X2 = split$X.quali
+pca_mix = PCAmix(X.quanti=X1, X.quali=X2, rename.level=TRUE, graph=FALSE)
+
+# get object information
+pca_mix
+names(pca_mix)
+
+# view squared loadings table
+summary(pca_mix)
+pca_mix$sqload
+pca_mix$ind$coord
+mix_eta2 <- as.data.frame(pca_mix$quali.eta2)
+mix_eta2
+
+pca_mix$eig
+
+pca_mix_df = data.frame(pca_mix$ind$coord[,1], pca_mix$ind$coord[,2])
+str(pca_mix_df)
+
+pca_mix_plot = ggplot(pca_mix_df, aes(x=pca_mix$ind$coord[,1], pca_mix$ind$coord[,2], color = dat2$Site)) + 
+  geom_point(size = 5) + 
+  stat_ellipse(show.legend = FALSE, lwd = 1)  + 
+  ggtitle("PCAmix: scatterplot") + 
+  xlab("PC 1 (25%)") + 
+  ylab("PC 2 (16%)") +
+  theme_light() + 
+  theme(plot.title = element_text(lineheight=.8, face="plain")) + 
+  labs(color='Site') 
+```
+```{r}
+pca_mix_plot
+```
+
+# `PCAmix` PCA - loadings
+Now, look at the loadings for PC PC 1 and PC 2 for the updated model: 
+```{r, include = F, echo = F}
+names(pca_mix)
+pca_mix$sqload
+
+pca_mix_loadings = data.frame(c("Site", "Sex", "Health", "Burial_location", "Depth", "Burial_items", "Ceramic_vessels", "Femur_length"), pca_mix$sqload[,1], pca_mix$sqload[,2])
+pca_mix_loadings
+
+pca_mix_pc1 = ggplot(pca_mix_loadings, aes(pca_mix_loadings[,1], pca_mix_loadings[,2])) + 
+  geom_bar(stat="identity") + 
+  ggtitle("PCAmix: PC 1 loadings") + 
+  xlab("PC 1") + 
+  ylab("") + 
+  ylim(-1, 1) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+```{r}
+pca_mix_pc1
+```
+```{r, include = F, echo = F}
+# plot PC2
+pca_mix_pc2 = ggplot(pca_mix_loadings, aes(pca_mix_loadings[,1], pca_mix_loadings[,3])) + 
+  geom_bar(stat="identity") + 
+  ggtitle("PCAmix: PC 2 loadings") + 
+  xlab("PC 2") + 
+  ylab("") + 
+  ylim(-1, 1) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r}
+pca_mix_pc2
+```
+
+# `PCAmix` PCA - loadings in 2D
+```{r, include = F, echo = F}
+#pca_mix_df_vars <- data.frame(pca_mix_loadings[,1], pca_mix_loadings[,2])
+pca_mix_loadings
+
+pca_mix_df_vars_plot <- ggplot(pca_mix_loadings, aes(pca_mix_loadings[,2], pca_mix_loadings[,3])) + 
+  geom_text(label=pca_mix_loadings[,1], size = 7) + 
+  xlim(-0.75, 1.5) +
+  xlab("PC 1") +
+  ylab("PC 2") +
+  theme_minimal()
+```
+```{r}
+pca_mix_df_vars_plot
+```
+
+# `PCAmix` PCA - other visualizations 
+```{r, echo = F}
+# plot 1
+pca2_plot1 <- plot(pca_mix,choice="ind",axes=c(1,2),coloring.ind=dat2$Site,label=FALSE,
+                   posleg="topleft", cex.leg=0.5, main="Observations")
+
+# plot 2
+pca2_plot2 <- plot(pca_mix,choice="levels",axes=c(1,2),xlim=c(-2,2.25),cex=0.9, main="Levels")
+
+# plot 3
+pca2_plot3 <- plot(pca_mix,choice="cor",axes=c(1,2),main="Numerical variables",
+     xlim=c(-1, 1), ylim=c(-1, 1))
+
+# plot 4
+pca2_plot4 <- plot(pca_mix,choice="sqload",axes=c(1,2), coloring.var=TRUE, leg=TRUE, xlim=c(-0.1,1.05),
+posleg="topleft", cex.leg=0.5,  main="All variables")
+```
+
+# Quick NA handling
+Use geometric mean scaling to circumvent missing data
+```{r, include = F, echo = F}
+# create a copy of the "num" dataset
+dat3 <- numeric
+
+# quickly introduce some NA rows into "dat3"
+dat3[c(5,10,15,20),] <- NA
+dat3
+
+# geometric mean scale the columns
+CAT <- geometric.mean(dat3[c(11:15), c(1:3)], na.rm=TRUE)
+HAL <- geometric.mean(dat3[c(6:10), c(1:3)], na.rm=TRUE)
+HUA <- geometric.mean(dat3[c(1:5), c(1:3)], na.rm=TRUE)
+ODA <- geometric.mean(dat3[c(16:20), c(1:3)], na.rm=TRUE)
+SHU <- geometric.mean(dat3[c(21:25), c(1:3)], na.rm=TRUE)
+
+# create data frame
+gm_df <- data.frame(CAT, HAL, HUA, ODA, SHU)
+gm_df
+
+# transpose this data frame
+gm <- as.data.frame(t(gm_df)) 
+gm
+gm$SITE = factor(c("Catalhoyuk", "Halstatt", "Huaca Loro", "Odai Yamamoto", "Shum Laka"))
+gm
+```
+
+# interactive 3D scatterplot of geometrix mean scaled data with rgl's `plot3d` function
+Click and drag to move the plots around and zoom! 
+```{r, echo = F}
+# plot
+options(rgl.printRglwidget = TRUE)
+plot3d(gm, col=c(1:5), type="s", size=2)
+text3d(x=gm$Depth,y=gm$Burial_items, z=gm$Ceramic_vessels, texts=gm$SITE, col=6, adj = c(-.05,1.05), font.axis = 2, family = "sans", cex = 2) 
+```
+
+# PCA - basic machine learning example with `prcomp`
+[Stack Overflow - How to use R prcomp results for prediction?](https://stats.stackexchange.com/questions/72839/how-to-use-r-prcomp-results-for-prediction)
+```{r, include = F}
+dat4 = dat[,c(1,5:8)]
+dat4
+
+# quick training (70%) and prediction/testing (30%) split
+set.seed(1)
+samp <- sample(nrow(num), nrow(num)*0.70)
+samp
+train_set <- dat4[samp,]
+test_set <- dat4[-samp,]
+
+dim(train_set)
+dim(test_set)
+
+# fit PCA model to training set
+pca <- prcomp(train_set[,2:4], retx=TRUE, center=TRUE, scale=TRUE)
+pca
+summary(pca)
+expl.var <- round(pca$sdev^2/sum(pca$sdev^2)*100) # percent explained variance
+expl.var
+
+# prediction of PCs for validation dataset
+pred <- predict(pca, newdata=test_set[,2:4])
+pred
+
+###Plot result
+COLOR <- c(1:5)
+PCH <- c(1,16)
+
+pc <- c(1,2) # principal components to plot
+
+```
+```{r, echo = F}
+plot(pca$x[,pc], col=COLOR[train_set$Site], cex = 3, #cex=PCH[1], 
+     xlab=paste0("PC ", pc[1], " (", expl.var[pc[1]], "%)"), 
+     ylab=paste0("PC ", pc[2], " (", expl.var[pc[2]], "%)"),
+     xlim = c(-3,3), ylim=c(-3,3)
+)
+points(pred[,pc], col=COLOR[test_set$Site], pch=PCH[2], cex = 3)
+legend("topleft", legend=levels(dat$Site), fill = COLOR, border=COLOR, cex =2)
+legend("topright", legend=c("training data", "test data"), col=1, pch=PCH, cex = 2)
+#par(op)
+#dev.off()
+```
+
+Be sure to check out [James, Witten, Hastie, and Tibshirani's (2013) **An introduction to statistical learning with applications in R, 7th ed.**](http://www-bcf.usc.edu/~gareth/ISL/) to learn more! 
