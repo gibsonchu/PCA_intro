@@ -375,7 +375,7 @@ text3d(x=gm$Depth,y=gm$Burial_items, z=gm$Ceramic_vessels, texts=gm$SITE, col=6,
 ```
 
 # PCA - basic machine learning example with `prcomp`
-[Stack Overflow - How to use R prcomp results for prediction?](https://stats.stackexchange.com/questions/72839/how-to-use-r-prcomp-results-for-prediction)
+Let's reproduce this example: [Stack Overflow - How to use R prcomp results for prediction?](https://stats.stackexchange.com/questions/72839/how-to-use-r-prcomp-results-for-prediction)
 ```{r, include = F}
 dat4 = dat[,c(1,5:8)]
 dat4
@@ -409,16 +409,14 @@ pc <- c(1,2) # principal components to plot
 
 ```
 ```{r, echo = F}
-plot(pca$x[,pc], col=COLOR[train_set$Site], cex = 3, #cex=PCH[1], 
+plot(pca$x[,pc], col=COLOR[train_set$Site], cex = 1, 
      xlab=paste0("PC ", pc[1], " (", expl.var[pc[1]], "%)"), 
      ylab=paste0("PC ", pc[2], " (", expl.var[pc[2]], "%)"),
      xlim = c(-3,3), ylim=c(-3,3)
 )
-points(pred[,pc], col=COLOR[test_set$Site], pch=PCH[2], cex = 3)
+points(pred[,pc], col=COLOR[test_set$Site], pch=PCH[2], cex = 1)
 legend("topleft", legend=levels(dat$Site), fill = COLOR, border=COLOR, cex =2)
 legend("topright", legend=c("training data", "test data"), col=1, pch=PCH, cex = 2)
-#par(op)
-#dev.off()
 ```
 
 Be sure to check out [James, Witten, Hastie, and Tibshirani's (2013) **An introduction to statistical learning with applications in R, 7th ed.**](http://www-bcf.usc.edu/~gareth/ISL/) to learn more! 
